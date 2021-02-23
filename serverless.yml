@@ -1,0 +1,146 @@
+service: xws
+frameworkVersion: '2'
+
+custom:
+  filesBucketName: ${self:service}-files-${self:provider.stage}
+  alertsTableName: ${self:service}-alerts-${self:provider.stage}
+
+provider:
+  name: aws
+  profile: defra-dev-sandpit
+  runtime: nodejs12.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'eu-west-2'}
+  lambdaHashingVersion: 20201221
+  environment:
+    FILES_BUCKET_NAME: ${self:custom.filesBucketName}
+    FILES_BUCKET_URL: https://${self:custom.filesBucketName}.s3.${self:provider.region}.amazonaws.com
+    ALERTS_TABLE_NAME: ${self:custom.alertsTableName}
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:ListBucket
+        - s3:GetObject
+        - s3:GetObjectAcl
+        - s3:PutObject
+        - s3:PutObjectAcl
+      Resource:
+        - arn:aws:s3:::${self:custom.filesBucketName}
+        - arn:aws:s3:::${self:custom.filesBucketName}/*
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource:
+        - !GetAtt
+            - ddbAlerts
+            - Arn
+
+functions:
+  # publisher:
+  #   handler: publisher.handler
+  #   events:
+  #     - sns:
+  #         arn: !Ref alertIssuedTopic
+  #         topicName: alertIssuedTopic
+
+  register:
+    handler: register.handler
+    events:
+      - s3:
+          bucket: ${self:custom.filesBucketName}
+          event: s3:ObjectCreated:*
+          rules:
+            # - prefix: uploads/
+            - suffix: .xml
+          existing: true
+
+resources:
+  Resources: 
+    # # Create the SNS Topic
+    # alertIssuedTopic:
+    #   Type: AWS::SNS::Topic
+    #   Properties:
+    #     TopicName: ${self:service}-${self:provider.stage}-alert-issued
+    #     DisplayName: Alert issued
+ 
+    # # Create the 'messages' SQS DL queue
+    # messagesDLQueue:
+    #   Type: AWS::SQS::Queue
+    #   Properties:
+    #     QueueName: ${self:service}-${self:provider.stage}-messages-dlq
+ 
+    # # Create the 'message' SQS queue
+    # messagesQueue:
+    #   Type: AWS::SQS::Queue
+    #   Properties:
+    #     QueueName: ${self:service}-${self:provider.stage}-messages
+    #     RedrivePolicy:
+    #       deadLetterTargetArn: !GetAtt
+    #         - messagesDLQueue
+    #         - Arn
+    #       maxReceiveCount: 3
+ 
+    # # Create our queue policy for the 'messages' queue
+    # snsToSqsPolicy:
+    #   Type: AWS::SQS::QueuePolicy
+    #   Properties:
+    #     PolicyDocument:
+    #       Version: "2012-10-17"
+    #       Statement:
+    #         - Sid: "allow-sns-messages"
+    #           Effect: Allow
+    #           Principal: "*"
+    #           Resource: !GetAtt
+    #             - messagesQueue
+    #             - Arn
+    #           Action: "SQS:SendMessage"
+    #           Condition:
+    #             ArnEquals:
+    #               "aws:SourceArn": !Ref alertIssuedTopic
+    #     Queues:
+    #       - Ref: messagesQueue
+ 
+    # # Create the subscription to the 'messages' queue
+    # messagesSubscription:
+    #   Type: AWS::SNS::Subscription
+    #   Properties:
+    #     TopicArn: !Ref alertIssuedTopic
+    #     Endpoint: !GetAtt
+    #       - messagesQueue
+    #       - Arn
+    #     Protocol: sqs
+    #     RawMessageDelivery: true
+
+    s3Files:
+      Type: AWS::S3::Bucket
+      Properties:
+        AccessControl: PublicRead
+        BucketName: ${self:custom.filesBucketName}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedHeaders:
+                - "*"
+              AllowedMethods:
+                - HEAD
+                - GET
+              AllowedOrigins:
+                - "*"
+    ddbAlerts:
+        Type: AWS::DynamoDB::Table
+        Properties:
+          TableName: ${self:custom.alertsTableName}
+          AttributeDefinitions:
+            - AttributeName: area_code
+              AttributeType: S
+          KeySchema:
+            - AttributeName: area_code
+              KeyType: HASH
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
