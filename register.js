@@ -6,6 +6,7 @@ const filesBucketName = process.env.FILES_BUCKET_NAME
 const filesBucketUrl = process.env.FILES_BUCKET_URL
 const alertsTableName = process.env.ALERTS_TABLE_NAME
 const s3 = new AWS.S3()
+const sns = new AWS.SNS()
 
 async function handler (event) {
   console.log(event, event.Records[0].s3)
@@ -127,6 +128,12 @@ async function handler (event) {
   const putObjectResult = await s3.putObject(params1).promise()
 
   console.log(putObjectResult)
+
+  const publishResult = await sns.publish({
+    Message: identifier,
+    TopicArn: process.env.ALERT_PUBLISHED_TOPIC_ARN
+  })
+  console.log(publishResult)
 }
 
 function getRssFeed (alerts) {

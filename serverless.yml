@@ -7,7 +7,6 @@ custom:
 
 provider:
   name: aws
-  profile: defra-dev-sandpit
   runtime: nodejs12.x
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'eu-west-2'}
@@ -16,6 +15,7 @@ provider:
     FILES_BUCKET_NAME: ${self:custom.filesBucketName}
     FILES_BUCKET_URL: https://${self:custom.filesBucketName}.s3.${self:provider.region}.amazonaws.com
     ALERTS_TABLE_NAME: ${self:custom.alertsTableName}
+    ALERT_PUBLISHED_TOPIC_ARN: !Ref alertPublishedTopic
 
   iamRoleStatements:
     - Effect: Allow
@@ -40,6 +40,12 @@ provider:
         - !GetAtt
             - ddbAlerts
             - Arn
+    - Effect: Allow
+      Action:
+        - sns:Publish
+      Resource:
+        - !Ref alertPublishedTopic
+        # - arn:aws:sns:::${self:service}-alert-published-${self:provider.stage}
 
 functions:
   # publisher:
@@ -62,12 +68,12 @@ functions:
 
 resources:
   Resources: 
-    # # Create the SNS Topic
-    # alertIssuedTopic:
-    #   Type: AWS::SNS::Topic
-    #   Properties:
-    #     TopicName: ${self:service}-${self:provider.stage}-alert-issued
-    #     DisplayName: Alert issued
+    # Create the SNS Topic
+    alertPublishedTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: ${self:service}-alert-published-${self:provider.stage}
+        DisplayName: Alert published
  
     # # Create the 'messages' SQS DL queue
     # messagesDLQueue:
