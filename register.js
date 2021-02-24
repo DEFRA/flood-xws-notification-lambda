@@ -120,7 +120,7 @@ function getRssFeed (alerts) {
     feed.addItem({
       id: alert.identifier,
       title: alert.headline,
-      link: `${filesBucketUrl}/${alert.identifier}.xml`,
+      link: `${filesBucketUrl}/alert/${alert.identifier}.xml`,
       date: new Date(alert.created_at)
     })
   })
