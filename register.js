@@ -1,86 +1,34 @@
 const AWS = require('aws-sdk')
 const { parse } = require('caplib')
 const { Feed } = require('feed')
+const s3 = new AWS.S3()
+const sns = new AWS.SNS()
 const ddb = new AWS.DynamoDB.DocumentClient()
 const filesBucketName = process.env.FILES_BUCKET_NAME
 const filesBucketUrl = process.env.FILES_BUCKET_URL
 const alertsTableName = process.env.ALERTS_TABLE_NAME
-const s3 = new AWS.S3()
-const sns = new AWS.SNS()
 
-async function handler (event) {
-  console.log(event, event.Records[0].s3)
-  //= >
-  // {
-  //   Records: [
-  //     {
-  //       eventVersion: '2.1',
-  //       eventSource: 'aws:s3',
-  //       awsRegion: 'eu-west-2',
-  //       eventTime: '2021-02-23T12:37:06.572Z',
-  //       eventName: 'ObjectCreated:Put',
-  //       userIdentity: [Object],
-  //       requestParameters: [Object],
-  //       responseElements: [Object],
-  //       s3: [Object]
-  //     }
-  //   ]
-  // } {
-  //   s3SchemaVersion: '1.0',
-  //   configurationId: 'xws-dev-register-f6ae83ff692d7e41e9ae36a3a5cf2905',
-  //   bucket: {
-  //     name: 'xws-files-dev',
-  //     ownerIdentity: { principalId: 'AZVZNXKGQLYX1' },
-  //     arn: 'arn:aws:s3:::xws-files-dev'
-  //   },
-  //   object: {
-  //     key: '2507c54f-4adf-4ba9-baea-efe0cc663b69.xml',
-  //     size: 933,
-  //     eTag: '38a8a75cbbd5d97f87bcbbd054800d9d',
-  //     sequencer: '006034F6F5243FF68F'
-  //   }
-  // }
-
-  const { Records: records } = event
-  const record = records[0]
-  console.log(record)
-  const { s3: data } = record
-  console.log(data)
-  const key = data.object.key
-  console.log(key)
-
+async function getFile (key) {
   const result = await s3.getObject({
     Key: key,
     Bucket: filesBucketName
   }).promise()
 
   console.log(result)
-  // =>
-  // {
-  //   AcceptRanges: 'bytes',
-  //   LastModified: 2021-02-23T12:51:03.000Z,
-  //   ContentLength: 832,
-  //   ETag: '"d4978636d146889dc66b083677f528b0"',
-  //   ContentType: 'text/xml',
-  //   Metadata: {},
-  //   Body: <Buffer 3c 3f 78 6d 6c 20 76 65 72 73 69 6f... 782 more bytes>
-  // }
 
-  const { Body: body } = result
-  const xml = body.toString()
-  console.log(xml)
-  const alert = parse(xml)
-  console.log(alert)
+  return result
+}
+
+async function saveAlert (alert) {
   const { identifier, sender, source } = alert
 
   const info = alert.infos[0]
+  const { headline } = info
   const area = info.areas[0]
   const { areaDesc: areaName } = area
   const { value: areaCode } = area.geocodes[0]
 
   console.log(identifier, sender, source, areaName, areaCode)
-
-  const { headline, description } = info
 
   const item = {
     area_code: `ALERT#${areaCode}`,
@@ -89,65 +37,64 @@ async function handler (event) {
     sender,
     source,
     headline,
-    description,
     updated_at: Date.now(),
     created_at: Date.now()
   }
 
-  await ddb.put({
+  const result = await ddb.put({
     TableName: alertsTableName,
     Item: item
   }).promise()
 
+  console.log(result)
+
+  return result
+}
+
+async function getRss () {
   const params = {
     TableName: alertsTableName
-    // KeyConditionExpression: 'begins_with(area_code, :prefix)',
-    // ExpressionAttributeValues: {
-    //   ':prefix': 'ALERT#'
-    // }
   }
 
-  const result1 = await ddb.scan(params).promise()
-  const alerts = result1.Items
+  // Get all alerts
+  const result = await ddb.scan(params).promise()
+  const alerts = result.Items
 
-  console.log(alerts)
+  console.log(alerts.length)
 
-  const rss = getRssFeed(alerts)
+  // Get rss feed
+  const feed = getRssFeed(alerts)
 
-  // const s3bucket = new AWS.S3()
+  const rss = addStylesheet('./rss-style.xsl', feed.rss2())
 
-  const rssXml = rss.rss2()
-  console.log(rssXml)
+  console.log(rss)
 
-  const params1 = {
+  return rss
+}
+
+async function saveRss () {
+  const rss = await getRss()
+
+  const params = {
     Bucket: filesBucketName,
-    Key: 'alerts.rss',
-    Body: rssXml
+    Key: 'alerts.xml',
+    Body: rss
   }
 
-  const putObjectResult = await s3.putObject(params1).promise()
+  const result = await s3.putObject(params).promise()
 
-  console.log(putObjectResult)
+  console.log(result)
+}
 
-  const publishResult = await sns.publish({
-    Message: identifier,
+async function publishAlert (id) {
+  const result = await sns.publish({
+    Message: id,
     TopicArn: process.env.ALERT_PUBLISHED_TOPIC_ARN
   })
-  console.log(publishResult)
+  console.log(result)
 }
 
 function getRssFeed (alerts) {
-  // {
-  //   updated_at: 1614093300763,
-  //   sender: 'www.gov.uk/environment-agency',
-  //   created_at: 1614093300763,
-  //   identifier: '2507c54f-4adf-4ba9-baea-efe0cc663b69',
-  //   headline: 'Anderton',
-  //   source: 'Flood warning service',
-  //   area_name: 'River Weaver at Anderton',
-  //   area_code: 'ALERT#013FWFCH40',
-  //   description: 'Body'
-  // }
   // Todo: pull titles, author etc. from service/publisher/source/sender
   const feed = new Feed({
     id: 'http://example.com/',
@@ -181,13 +128,46 @@ function getRssFeed (alerts) {
   return feed
 }
 
-// function addStylesheet (href, rss) {
-//   const declaration = '<?xml version="1.0" encoding="utf-8"?>\n'
-//   const decExists = rss.includes(declaration)
-//   const insertIdx = decExists ? declaration.length : 0
-//   const instruction = `<?xml-stylesheet type="text/xsl" href="${href}"?>\n`
+function addStylesheet (href, xml) {
+  const declaration = '<?xml version="1.0" encoding="utf-8"?>\n'
+  const decExists = xml.includes(declaration)
+  const insertIdx = decExists ? declaration.length : 0
+  const instruction = `<?xml-stylesheet type="text/xsl" href="${href}"?>\n`
 
-//   return rss.substring(0, insertIdx) + instruction + rss.substring(insertIdx)
-// }
+  return xml.substring(0, insertIdx) + instruction + xml.substring(insertIdx)
+}
+
+async function handler (event) {
+  console.log(event, event.Records[0].s3)
+
+  // Extract the key from the s3 event data
+  const { Records: records } = event
+  const record = records[0]
+  console.log(record)
+
+  const { s3: data } = record
+  console.log(data)
+
+  const key = data.object.key
+  console.log(key)
+
+  // Get file from s3
+  const file = await getFile(key)
+
+  // Parse alert XML
+  const xml = file.Body.toString()
+  console.log(xml)
+  const alert = parse(xml)
+  console.log(alert)
+
+  // Save alert to db
+  await saveAlert(alert)
+
+  // Save the RSS file
+  await saveRss()
+
+  // Publish to SNS
+  await publishAlert(alert.identifier)
+}
 
 module.exports = { handler }

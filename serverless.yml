@@ -62,7 +62,7 @@ functions:
           bucket: ${self:custom.filesBucketName}
           event: s3:ObjectCreated:*
           rules:
-            # - prefix: uploads/
+            - prefix: alerts/
             - suffix: .xml
           existing: true
 
