@@ -6,11 +6,16 @@
   "dependencies": {
     "caplib": "github:NeXt-Warning-System/caplib",
     "feed": "4.2.2",
+    "notifications-node-client": "5.1.0",
     "serverless": "2.23.0"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "serverless-s3-deploy": "^0.10.0",
+    "standard": "16.0.3"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "lint": "standard",
+    "test": "npm run lint"
   },
   "author": "DEFRA",
   "license": "OGL-UK-3.0",

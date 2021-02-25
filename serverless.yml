@@ -1,9 +1,32 @@
 service: xws
 frameworkVersion: '2'
 
+plugins:
+    - serverless-s3-deploy
+
 custom:
   filesBucketName: ${self:service}-files-${self:provider.stage}
+  filesBucketDomain: ${self:custom.filesBucketName}.s3.${self:provider.region}.amazonaws.com
+  filesBucketUrl: https://${self:custom.filesBucketDomain}
   alertsTableName: ${self:service}-alerts-${self:provider.stage}
+  contactsTableName: ${self:service}-contacts-${self:provider.stage}
+  assets:
+    targets:
+      - bucket:
+          Ref: s3Files
+        prefix: alerts
+        files:
+        - source: ./files/
+          globs: 'alert-style.xsl'
+      - bucket:
+          Ref: s3Files
+        files:
+        - source: ./files/
+          globs:
+            - 'rss-style.xsl'
+            - 'draw-shapes.js'
+            - 'favicon.ico'
+            - 'xws.png'
 
 provider:
   name: aws
@@ -13,9 +36,12 @@ provider:
   lambdaHashingVersion: 20201221
   environment:
     FILES_BUCKET_NAME: ${self:custom.filesBucketName}
-    FILES_BUCKET_URL: https://${self:custom.filesBucketName}.s3.${self:provider.region}.amazonaws.com
+    FILES_BUCKET_URL: ${self:custom.filesBucketUrl}
     ALERTS_TABLE_NAME: ${self:custom.alertsTableName}
     ALERT_PUBLISHED_TOPIC_ARN: !Ref alertPublishedTopic
+    MESSAGES_QUEUE_URL: !Ref messagesQueue
+    NOTIFY_SMS_TEMPLATE_ID: b9dd4246-b409-4c59-8e7e-c84c590d554c
+    NOTIFY_EMAIL_TEMPLATE_ID: db3d92aa-31c7-470d-b1c4-d989751800ff
 
   iamRoleStatements:
     - Effect: Allow
@@ -38,25 +64,37 @@ provider:
         - dynamodb:DeleteItem
       Resource:
         - !GetAtt
-            - ddbAlerts
-            - Arn
+          - ddbContacts
+          - Arn
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource:
+        - !GetAtt
+          - ddbAlerts
+          - Arn
     - Effect: Allow
       Action:
         - sns:Publish
       Resource:
         - !Ref alertPublishedTopic
-        # - arn:aws:sns:::${self:service}-alert-published-${self:provider.stage}
+    - Effect: Allow
+      Action:
+        - sqs:SendMessage
+        - sqs:SendMessageBatch
+      Resource:
+        - !GetAtt
+          - messagesQueue
+          - Arn
 
 functions:
-  # publisher:
-  #   handler: publisher.handler
-  #   events:
-  #     - sns:
-  #         arn: !Ref alertIssuedTopic
-  #         topicName: alertIssuedTopic
-
-  register:
-    handler: register.handler
+  processAlert:
+    handler: process-alert.handler
     events:
       - s3:
           bucket: ${self:custom.filesBucketName}
@@ -66,32 +104,61 @@ functions:
             - suffix: .xml
           existing: true
 
+  enqueue:
+    handler: enqueue.handler
+    events:
+      - sns:
+          arn: !Ref alertPublishedTopic
+          topicName: alertPublishedTopic
+
+  dequeue:
+    handler: dequeue.handler
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - messagesQueue
+              - Arn
+
+  contact-subscribe:
+    handler: contact-subscribe.handler
+    events:
+      - sns:
+          arn: !Ref contactSubscribedTopic
+          topicName: contactSubscribedTopic
+
 resources:
-  Resources: 
+  Resources:
     # Create the SNS Topic
     alertPublishedTopic:
       Type: AWS::SNS::Topic
       Properties:
         TopicName: ${self:service}-alert-published-${self:provider.stage}
         DisplayName: Alert published
- 
-    # # Create the 'messages' SQS DL queue
-    # messagesDLQueue:
-    #   Type: AWS::SQS::Queue
-    #   Properties:
-    #     QueueName: ${self:service}-${self:provider.stage}-messages-dlq
- 
-    # # Create the 'message' SQS queue
-    # messagesQueue:
-    #   Type: AWS::SQS::Queue
-    #   Properties:
-    #     QueueName: ${self:service}-${self:provider.stage}-messages
-    #     RedrivePolicy:
-    #       deadLetterTargetArn: !GetAtt
-    #         - messagesDLQueue
-    #         - Arn
-    #       maxReceiveCount: 3
- 
+
+    contactSubscribedTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: ${self:service}-contact-suscribed-${self:provider.stage}
+        DisplayName: Contact subscribed
+
+    # Create the 'messages' SQS DL queue
+    messagesDLQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-messages-dlq-${self:provider.stage}
+
+    # Create the 'message' SQS queue
+    messagesQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-messages-${self:provider.stage}
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt
+            - messagesDLQueue
+            - Arn
+          maxReceiveCount: 1
+
     # # Create our queue policy for the 'messages' queue
     # snsToSqsPolicy:
     #   Type: AWS::SQS::QueuePolicy
@@ -126,17 +193,32 @@ resources:
     s3Files:
       Type: AWS::S3::Bucket
       Properties:
-        AccessControl: PublicRead
+        AccessControl: Private
         BucketName: ${self:custom.filesBucketName}
-        CorsConfiguration:
-          CorsRules:
-            - AllowedHeaders:
-                - "*"
-              AllowedMethods:
-                - HEAD
-                - GET
-              AllowedOrigins:
-                - "*"
+        # PublicAccessBlockConfiguration:
+        #   BlockPublicAcls: true
+        #   BlockPublicPolicy: true
+        #   IgnorePublicAcls: true
+        #   RestrictPublicBuckets: true
+
+    ddbContacts:
+        Type: AWS::DynamoDB::Table
+        Properties:
+          TableName: ${self:custom.contactsTableName}
+          AttributeDefinitions:
+            - AttributeName: area_code
+              AttributeType: S
+            - AttributeName: value 
+              AttributeType: S
+          KeySchema:
+            - AttributeName: area_code
+              KeyType: HASH
+            - AttributeName: value
+              KeyType: RANGE
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+
     ddbAlerts:
         Type: AWS::DynamoDB::Table
         Properties:
@@ -150,3 +232,46 @@ resources:
           ProvisionedThroughput:
             ReadCapacityUnits: 5
             WriteCapacityUnits: 5
+
+    cloudFrontS3BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket:
+          Ref: s3Files
+        PolicyDocument:
+          Statement:
+            - Sid: PublicReadGetObject
+              Effect: Allow
+              Principal: "*"
+              Action:
+              - s3:GetObject
+              Resource: arn:aws:s3:::${self:custom.filesBucketName}/*
+
+    cloudFrontDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Origins:
+            - DomainName: ${self:custom.filesBucketDomain}
+              Id: xws-${self:provider.stage}
+              CustomOriginConfig:
+                HTTPPort: 80
+                HTTPSPort: 443
+                OriginProtocolPolicy: https-only
+          Enabled: 'true'
+          # Aliases:
+          # - defraxws.com
+          DefaultRootObject: alerts.xml
+          DefaultCacheBehavior:
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            TargetOriginId: xws-${self:provider.stage}
+            ForwardedValues:
+              QueryString: false
+              Cookies:
+                Forward: none
+            ViewerProtocolPolicy: redirect-to-https
+          ViewerCertificate:
+            CloudFrontDefaultCertificate: true

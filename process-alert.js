@@ -8,7 +8,7 @@ const filesBucketName = process.env.FILES_BUCKET_NAME
 const filesBucketUrl = process.env.FILES_BUCKET_URL
 const alertsTableName = process.env.ALERTS_TABLE_NAME
 
-async function getFile (key) {
+async function getAlertFile (key) {
   const result = await s3.getObject({
     Key: key,
     Bucket: filesBucketName
@@ -19,17 +19,34 @@ async function getFile (key) {
   return result
 }
 
-async function saveAlert (alert) {
-  const { identifier, sender, source } = alert
+function getAlertMetadata (file) {
+  const xml = file.Body.toString()
+  console.log('CAPXML', xml)
 
+  const alert = parse(xml)
+  console.log(alert)
+
+  const { identifier, sender, source } = alert
   const info = alert.infos[0]
-  const { headline } = info
+  const { headline, description } = info
   const area = info.areas[0]
   const { areaDesc: areaName } = area
   const { value: areaCode } = area.geocodes[0]
 
-  console.log(identifier, sender, source, areaName, areaCode)
+  console.log(identifier, headline, description, sender, source, areaName, areaCode)
 
+  return {
+    identifier,
+    headline,
+    description,
+    sender,
+    source,
+    areaName,
+    areaCode
+  }
+}
+
+async function saveAlert ({ identifier, headline, sender, source, areaName, areaCode }) {
   const item = {
     area_code: `ALERT#${areaCode}`,
     area_name: areaName,
@@ -37,7 +54,6 @@ async function saveAlert (alert) {
     sender,
     source,
     headline,
-    updated_at: Date.now(),
     created_at: Date.now()
   }
 
@@ -72,13 +88,14 @@ async function getRss () {
   return rss
 }
 
-async function saveRss () {
+async function publishAlertsRss () {
   const rss = await getRss()
 
   const params = {
     Bucket: filesBucketName,
     Key: 'alerts.xml',
-    Body: rss
+    Body: rss,
+    ContentType: 'text/xml'
   }
 
   const result = await s3.putObject(params).promise()
@@ -86,12 +103,20 @@ async function saveRss () {
   console.log(result)
 }
 
-async function publishAlert (id) {
+async function publishAlert ({ identifier, areaCode, headline, description }) {
+  const message = { identifier, area_code: areaCode, headline, description }
+
   const result = await sns.publish({
-    Message: id,
+    Message: JSON.stringify(message),
+    MessageAttributes: {
+      area_code: { DataType: 'String', StringValue: areaCode }
+    },
     TopicArn: process.env.ALERT_PUBLISHED_TOPIC_ARN
-  })
-  console.log(result)
+  }).promise()
+
+  console.log('SNS publish result', result)
+
+  return result
 }
 
 function getRssFeed (alerts) {
@@ -149,25 +174,26 @@ async function handler (event) {
   console.log(data)
 
   const key = data.object.key
-  console.log(key)
+  console.log('S3 file key', key)
 
+  await processAlert(key)
+}
+
+async function processAlert (key) {
   // Get file from s3
-  const file = await getFile(key)
+  const file = await getAlertFile(key)
 
-  // Parse alert XML
-  const xml = file.Body.toString()
-  console.log(xml)
-  const alert = parse(xml)
-  console.log(alert)
+  // Parse alert XML and extract data
+  const metadata = getAlertMetadata(file)
 
   // Save alert to db
-  await saveAlert(alert)
+  await saveAlert(metadata)
 
-  // Save the RSS file
-  await saveRss()
+  // Publish the RSS file
+  await publishAlertsRss()
 
   // Publish to SNS
-  await publishAlert(alert.identifier)
+  await publishAlert(metadata)
 }
 
 module.exports = { handler }
