@@ -9,7 +9,8 @@ custom:
   filesBucketDomain: ${self:custom.filesBucketName}.s3.${self:provider.region}.amazonaws.com
   filesBucketUrl: https://${self:custom.filesBucketDomain}
   alertsTableName: ${self:service}-alerts-${self:provider.stage}
-  contactsTableName: ${self:service}-contacts-${self:provider.stage}
+  apiKey: ${self:service}-${self:provider.stage}-xws-api-key
+
   assets:
     targets:
       - bucket:
@@ -34,14 +35,16 @@ provider:
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'eu-west-2'}
   lambdaHashingVersion: 20201221
+  apiGateway:
+    shouldStartNameWithService: true
+    apiKeys:
+      - ${self:custom.apiKey}
   environment:
     FILES_BUCKET_NAME: ${self:custom.filesBucketName}
     FILES_BUCKET_URL: ${self:custom.filesBucketUrl}
     ALERTS_TABLE_NAME: ${self:custom.alertsTableName}
     ALERT_PUBLISHED_TOPIC_ARN: !Ref alertPublishedTopic
-    MESSAGES_QUEUE_URL: !Ref messagesQueue
-    NOTIFY_SMS_TEMPLATE_ID: b9dd4246-b409-4c59-8e7e-c84c590d554c
-    NOTIFY_EMAIL_TEMPLATE_ID: db3d92aa-31c7-470d-b1c4-d989751800ff
+    PINPOINT_APPLICATION_ID: !Ref pinpointApp
 
   iamRoleStatements:
     - Effect: Allow
@@ -54,18 +57,7 @@ provider:
       Resource:
         - arn:aws:s3:::${self:custom.filesBucketName}
         - arn:aws:s3:::${self:custom.filesBucketName}/*
-    - Effect: Allow
-      Action:
-        - dynamodb:Query
-        - dynamodb:Scan
-        - dynamodb:GetItem
-        - dynamodb:PutItem
-        - dynamodb:UpdateItem
-        - dynamodb:DeleteItem
-      Resource:
-        - !GetAtt
-          - ddbContacts
-          - Arn
+
     - Effect: Allow
       Action:
         - dynamodb:Query
@@ -78,19 +70,18 @@ provider:
         - !GetAtt
           - ddbAlerts
           - Arn
+
     - Effect: Allow
       Action:
-        - sns:Publish
+        - mobiletargeting:GetEndpoint
+        - mobiletargeting:UpdateEndpoint
+        - mobiletargeting:GetUserEndpoints
+        - mobiletargeting:DeleteEndpoint
+        - mobiletargeting:DeleteUserEndpoints
       Resource:
-        - !Ref alertPublishedTopic
-    - Effect: Allow
-      Action:
-        - sqs:SendMessage
-        - sqs:SendMessageBatch
-      Resource:
-        - !GetAtt
-          - messagesQueue
-          - Arn
+        - !Sub 
+          - '${pinpointAppArn}/*'
+          - { pinpointAppArn: !GetAtt pinpointApp.Arn }
 
 functions:
   processAlert:
@@ -111,84 +102,48 @@ functions:
           arn: !Ref alertPublishedTopic
           topicName: alertPublishedTopic
 
-  dequeue:
-    handler: dequeue.handler
+  getEndpoint:
+    handler: get-endpoint.handler
     events:
-      - sqs:
-          arn:
-            Fn::GetAtt:
-              - messagesQueue
-              - Arn
+      - http:
+          path: get-endpoint/{channel_type}/{endpoint_id}
+          method: get
 
-  contact-subscribe:
-    handler: contact-subscribe.handler
+  getUserEndpoints:
+    handler: get-user-endpoints.handler
     events:
-      - sns:
-          arn: !Ref contactSubscribedTopic
-          topicName: contactSubscribedTopic
+      - http:
+          path: get-user-endpoints/{user_id}
+          method: get
+
+  updateEndpoint:
+    handler: update-endpoint.handler
+    events:
+      - http:
+          path: update-endpoint/{channel_type}/{endpoint_id}
+          method: post
+
+  deleteEndpoint:
+    handler: delete-endpoint.handler
+    events:
+      - http:
+          path: delete-endpoint/{channel_type}/{endpoint_id}
+          method: delete
+
+  deleteUserEndpoints:
+    handler: delete-user-endpoints.handler
+    events:
+      - http:
+          path: delete-user-endpoints/{user_id}
+          method: delete
 
 resources:
   Resources:
-    # Create the SNS Topic
     alertPublishedTopic:
       Type: AWS::SNS::Topic
       Properties:
         TopicName: ${self:service}-alert-published-${self:provider.stage}
         DisplayName: Alert published
-
-    contactSubscribedTopic:
-      Type: AWS::SNS::Topic
-      Properties:
-        TopicName: ${self:service}-contact-suscribed-${self:provider.stage}
-        DisplayName: Contact subscribed
-
-    # Create the 'messages' SQS DL queue
-    messagesDLQueue:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: ${self:service}-messages-dlq-${self:provider.stage}
-
-    # Create the 'message' SQS queue
-    messagesQueue:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: ${self:service}-messages-${self:provider.stage}
-        RedrivePolicy:
-          deadLetterTargetArn: !GetAtt
-            - messagesDLQueue
-            - Arn
-          maxReceiveCount: 1
-
-    # # Create our queue policy for the 'messages' queue
-    # snsToSqsPolicy:
-    #   Type: AWS::SQS::QueuePolicy
-    #   Properties:
-    #     PolicyDocument:
-    #       Version: "2012-10-17"
-    #       Statement:
-    #         - Sid: "allow-sns-messages"
-    #           Effect: Allow
-    #           Principal: "*"
-    #           Resource: !GetAtt
-    #             - messagesQueue
-    #             - Arn
-    #           Action: "SQS:SendMessage"
-    #           Condition:
-    #             ArnEquals:
-    #               "aws:SourceArn": !Ref alertIssuedTopic
-    #     Queues:
-    #       - Ref: messagesQueue
- 
-    # # Create the subscription to the 'messages' queue
-    # messagesSubscription:
-    #   Type: AWS::SNS::Subscription
-    #   Properties:
-    #     TopicArn: !Ref alertIssuedTopic
-    #     Endpoint: !GetAtt
-    #       - messagesQueue
-    #       - Arn
-    #     Protocol: sqs
-    #     RawMessageDelivery: true
 
     s3Files:
       Type: AWS::S3::Bucket
@@ -201,37 +156,19 @@ resources:
         #   IgnorePublicAcls: true
         #   RestrictPublicBuckets: true
 
-    ddbContacts:
-        Type: AWS::DynamoDB::Table
-        Properties:
-          TableName: ${self:custom.contactsTableName}
-          AttributeDefinitions:
-            - AttributeName: area_code
-              AttributeType: S
-            - AttributeName: value 
-              AttributeType: S
-          KeySchema:
-            - AttributeName: area_code
-              KeyType: HASH
-            - AttributeName: value
-              KeyType: RANGE
-          ProvisionedThroughput:
-            ReadCapacityUnits: 5
-            WriteCapacityUnits: 5
-
     ddbAlerts:
-        Type: AWS::DynamoDB::Table
-        Properties:
-          TableName: ${self:custom.alertsTableName}
-          AttributeDefinitions:
-            - AttributeName: area_code
-              AttributeType: S
-          KeySchema:
-            - AttributeName: area_code
-              KeyType: HASH
-          ProvisionedThroughput:
-            ReadCapacityUnits: 5
-            WriteCapacityUnits: 5
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.alertsTableName}
+        AttributeDefinitions:
+          - AttributeName: area_code
+            AttributeType: S
+        KeySchema:
+          - AttributeName: area_code
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
 
     cloudFrontS3BucketPolicy:
       Type: AWS::S3::BucketPolicy
@@ -275,3 +212,23 @@ resources:
             ViewerProtocolPolicy: redirect-to-https
           ViewerCertificate:
             CloudFrontDefaultCertificate: true
+
+    pinpointApp:
+      Type: AWS::Pinpoint::App
+      Properties: 
+        Name: xws-${self:provider.stage}
+    
+    pinpointSmsChannel:
+      Type: AWS::Pinpoint::SMSChannel
+      Properties: 
+        ApplicationId: !Ref pinpointApp
+        Enabled: true
+          
+    pinpointEmailChannel:
+      Type: AWS::Pinpoint::EmailChannel
+      Properties: 
+        ApplicationId: !Ref pinpointApp
+        Enabled: true 
+        FromAddress: getfloodwarnings@gmail.com
+        Identity: arn:aws:ses:eu-west-2:190133113546:identity/getfloodwarnings@gmail.com
+        # RoleArn: 

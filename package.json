@@ -6,8 +6,8 @@
   "dependencies": {
     "caplib": "github:NeXt-Warning-System/caplib",
     "feed": "4.2.2",
-    "notifications-node-client": "5.1.0",
-    "serverless": "2.23.0"
+    "serverless": "2.23.0",
+    "xws-shared": "github:NeXt-Warning-System/common"
   },
   "devDependencies": {
     "serverless-s3-deploy": "^0.10.0",
