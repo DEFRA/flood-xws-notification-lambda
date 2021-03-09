@@ -5,7 +5,7 @@ const s3 = new AWS.S3()
 const sns = new AWS.SNS()
 const ddb = new AWS.DynamoDB.DocumentClient()
 const filesBucketName = process.env.FILES_BUCKET_NAME
-const filesBucketUrl = process.env.FILES_BUCKET_URL
+// const filesBucketUrl = process.env.FILES_BUCKET_URL
 const alertsTableName = process.env.ALERTS_TABLE_NAME
 
 async function getAlertFile (key) {
@@ -145,7 +145,7 @@ function getRssFeed (alerts) {
     feed.addItem({
       id: alert.identifier,
       title: alert.headline,
-      link: `${filesBucketUrl}/alert/${alert.identifier}.xml`,
+      link: `/alerts/${alert.identifier}.xml`,
       date: new Date(alert.created_at)
     })
   })
