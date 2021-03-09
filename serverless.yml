@@ -9,7 +9,6 @@ custom:
   filesBucketDomain: ${self:custom.filesBucketName}.s3.${self:provider.region}.amazonaws.com
   filesBucketUrl: https://${self:custom.filesBucketDomain}
   alertsTableName: ${self:service}-alerts-${self:provider.stage}
-  apiKey: ${self:service}-${self:provider.stage}-xws-api-key
 
   assets:
     targets:
@@ -35,10 +34,6 @@ provider:
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'eu-west-2'}
   lambdaHashingVersion: 20201221
-  apiGateway:
-    shouldStartNameWithService: true
-    apiKeys:
-      - ${self:custom.apiKey}
   environment:
     FILES_BUCKET_NAME: ${self:custom.filesBucketName}
     FILES_BUCKET_URL: ${self:custom.filesBucketUrl}
@@ -101,41 +96,6 @@ functions:
       - sns:
           arn: !Ref alertPublishedTopic
           topicName: alertPublishedTopic
-
-  getEndpoint:
-    handler: get-endpoint.handler
-    events:
-      - http:
-          path: get-endpoint/{channel_type}/{endpoint_id}
-          method: get
-
-  getUserEndpoints:
-    handler: get-user-endpoints.handler
-    events:
-      - http:
-          path: get-user-endpoints/{user_id}
-          method: get
-
-  updateEndpoint:
-    handler: update-endpoint.handler
-    events:
-      - http:
-          path: update-endpoint/{channel_type}/{endpoint_id}
-          method: post
-
-  deleteEndpoint:
-    handler: delete-endpoint.handler
-    events:
-      - http:
-          path: delete-endpoint/{channel_type}/{endpoint_id}
-          method: delete
-
-  deleteUserEndpoints:
-    handler: delete-user-endpoints.handler
-    events:
-      - http:
-          path: delete-user-endpoints/{user_id}
-          method: delete
 
 resources:
   Resources:
