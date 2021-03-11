@@ -46,39 +46,42 @@ async function getContacts (areaCode) {
 }
 
 async function handler (event) {
-  console.log(event, event.Records[0].Sns)
+  // TODO
+  // Create campaigns/segments
 
-  const { Records: records } = event
-  const record = records[0]
-  console.log(record)
+  // console.log(event, event.Records[0].Sns)
 
-  const { Sns: data } = record
-  console.log(data)
+  // const { Records: records } = event
+  // const record = records[0]
+  // console.log(record)
 
-  const areaCode = data.MessageAttributes.area_code.Value
-  const messageId = data.MessageId
-  const message = JSON.parse(data.Message)
-  const { headline, description } = message
-  console.log('Message ID', messageId, 'Message', message)
+  // const { Sns: data } = record
+  // console.log(data)
 
-  // Get the contacts that are subscribed to the area code
-  const contacts = await getContacts(areaCode)
+  // const areaCode = data.MessageAttributes.area_code.Value
+  // const messageId = data.MessageId
+  // const message = JSON.parse(data.Message)
+  // const { headline, description } = message
+  // console.log('Message ID', messageId, 'Message', message)
 
-  for (let i = 0; i < contacts.length; i++) {
-    const contact = contacts[i]
-    const { type, value } = contact
+  // // Get the contacts that are subscribed to the area code
+  // const contacts = await getContacts(areaCode)
 
-    const params = {
-      MessageBody: JSON.stringify({ value, headline, description }),
-      QueueUrl: queueUrl,
-      MessageAttributes: {
-        type: { DataType: 'String', StringValue: type }
-      }
-    }
+  // for (let i = 0; i < contacts.length; i++) {
+  //   const contact = contacts[i]
+  //   const { type, value } = contact
 
-    await sqs.sendMessage(params).promise()
-  }
-  console.log(event, db)
+  //   const params = {
+  //     MessageBody: JSON.stringify({ value, headline, description }),
+  //     QueueUrl: queueUrl,
+  //     MessageAttributes: {
+  //       type: { DataType: 'String', StringValue: type }
+  //     }
+  //   }
+
+  //   await sqs.sendMessage(params).promise()
+  // }
+  // console.log(event, db)
 }
 
 module.exports = { handler }

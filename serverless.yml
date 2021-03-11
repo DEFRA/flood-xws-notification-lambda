@@ -130,48 +130,48 @@ resources:
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
 
-    cloudFrontS3BucketPolicy:
-      Type: AWS::S3::BucketPolicy
-      Properties:
-        Bucket:
-          Ref: s3Files
-        PolicyDocument:
-          Statement:
-            - Sid: PublicReadGetObject
-              Effect: Allow
-              Principal: "*"
-              Action:
-              - s3:GetObject
-              Resource: arn:aws:s3:::${self:custom.filesBucketName}/*
+    # cloudFrontS3BucketPolicy:
+    #   Type: AWS::S3::BucketPolicy
+    #   Properties:
+    #     Bucket:
+    #       Ref: s3Files
+    #     PolicyDocument:
+    #       Statement:
+    #         - Sid: PublicReadGetObject
+    #           Effect: Allow
+    #           Principal: "*"
+    #           Action:
+    #           - s3:GetObject
+    #           Resource: arn:aws:s3:::${self:custom.filesBucketName}/*
 
-    cloudFrontDistribution:
-      Type: AWS::CloudFront::Distribution
-      Properties:
-        DistributionConfig:
-          Origins:
-            - DomainName: ${self:custom.filesBucketDomain}
-              Id: xws-${self:provider.stage}
-              CustomOriginConfig:
-                HTTPPort: 80
-                HTTPSPort: 443
-                OriginProtocolPolicy: https-only
-          Enabled: 'true'
-          # Aliases:
-          # - defraxws.com
-          DefaultRootObject: alerts.xml
-          DefaultCacheBehavior:
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-            TargetOriginId: xws-${self:provider.stage}
-            ForwardedValues:
-              QueryString: false
-              Cookies:
-                Forward: none
-            ViewerProtocolPolicy: redirect-to-https
-          ViewerCertificate:
-            CloudFrontDefaultCertificate: true
+    # cloudFrontDistribution:
+    #   Type: AWS::CloudFront::Distribution
+    #   Properties:
+    #     DistributionConfig:
+    #       Origins:
+    #         - DomainName: ${self:custom.filesBucketDomain}
+    #           Id: xws-${self:provider.stage}
+    #           CustomOriginConfig:
+    #             HTTPPort: 80
+    #             HTTPSPort: 443
+    #             OriginProtocolPolicy: https-only
+    #       Enabled: 'true'
+    #       # Aliases:
+    #       # - defraxws.com
+    #       DefaultRootObject: alerts.xml
+    #       DefaultCacheBehavior:
+    #         AllowedMethods:
+    #           - GET
+    #           - HEAD
+    #           - OPTIONS
+    #         TargetOriginId: xws-${self:provider.stage}
+    #         ForwardedValues:
+    #           QueryString: false
+    #           Cookies:
+    #             Forward: none
+    #         ViewerProtocolPolicy: redirect-to-https
+    #       ViewerCertificate:
+    #         CloudFrontDefaultCertificate: true
 
     pinpointApp:
       Type: AWS::Pinpoint::App
