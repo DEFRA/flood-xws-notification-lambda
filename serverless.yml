@@ -90,8 +90,8 @@ functions:
             - suffix: .xml
           existing: true
 
-  enqueue:
-    handler: enqueue.handler
+  alertNotification:
+    handler: alert-notification.handler
     events:
       - sns:
           arn: !Ref alertPublishedTopic
@@ -191,4 +191,5 @@ resources:
         Enabled: true 
         FromAddress: getfloodwarnings@gmail.com
         Identity: arn:aws:ses:eu-west-2:190133113546:identity/getfloodwarnings@gmail.com
-        # RoleArn: 
+        # RoleArn:
+ 
