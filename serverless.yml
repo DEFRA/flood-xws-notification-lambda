@@ -78,6 +78,12 @@ provider:
           - '${pinpointAppArn}/*'
           - { pinpointAppArn: !GetAtt pinpointApp.Arn }
 
+    - Effect: Allow
+      Action:
+        - sns:Publish
+      Resource:
+        - !Ref alertPublishedTopic
+
 functions:
   processAlert:
     handler: process-alert.handler
