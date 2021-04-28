@@ -73,9 +73,10 @@ provider:
         - mobiletargeting:GetUserEndpoints
         - mobiletargeting:DeleteEndpoint
         - mobiletargeting:DeleteUserEndpoints
+        - mobiletargeting:CreateCampaign
       Resource:
         - !Sub 
-          - '${pinpointAppArn}/*'
+          - '${pinpointAppArn}'
           - { pinpointAppArn: !GetAtt pinpointApp.Arn }
 
     - Effect: Allow
