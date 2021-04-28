@@ -74,6 +74,9 @@ provider:
         - mobiletargeting:DeleteEndpoint
         - mobiletargeting:DeleteUserEndpoints
         - mobiletargeting:CreateCampaign
+        - mobiletargeting:UpdateCampaign
+        - mobiletargeting:CreateSegment
+        - mobiletargeting:UpdateSegment
       Resource:
         - !Sub 
           - '${pinpointAppArn}'
