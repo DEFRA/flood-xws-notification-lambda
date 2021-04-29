@@ -15,6 +15,8 @@ async function createSegment (areaCode) {
   })
   console.log(JSON.stringify(params, null, 4))
   try {
+    // Note: docs suggest it should be possible to use updateSegment to upsert but get 'resource not available'
+    // when trying to do the initial create with SegmentId = {{name}} in segment-template.json
     const { SegmentResponse: { Id: id, Version: version } } = await pinpoint.createSegment(params).promise()
     console.log({ error: false, id, version })
     return { id, version }

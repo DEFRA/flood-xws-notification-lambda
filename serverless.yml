@@ -74,12 +74,18 @@ provider:
         - mobiletargeting:DeleteEndpoint
         - mobiletargeting:DeleteUserEndpoints
         - mobiletargeting:CreateCampaign
-        - mobiletargeting:UpdateCampaign
         - mobiletargeting:CreateSegment
+      Resource:
+        - !Sub
+          - '${pinpointAppArn}'
+          - { pinpointAppArn: !GetAtt pinpointApp.Arn }
+
+    - Effect: Allow
+      Action:
         - mobiletargeting:UpdateSegment
       Resource:
-        - !Sub 
-          - '${pinpointAppArn}'
+        - !Sub
+          - '${pinpointAppArn}/segments/*'
           - { pinpointAppArn: !GetAtt pinpointApp.Arn }
 
     - Effect: Allow
