@@ -12,13 +12,12 @@
 			"Total": 0
 		},
 		"MessageConfiguration": {
-			"EmailMessage": {
-				"FromAddress": "getfloodwarnings@gmail.com",
-				"HtmlBody": "{{body}}",
-				"Title": "{{headline}}"
-			}
+      "SMSMessage": {
+        "Body": "{{body}}",
+        "MessageType": "TRANSACTIONAL"
+      }
 		},
-		"Name": "{{name}}",
+		"Name": "{{name}} SMS",
 		"Schedule": {
 			"IsLocalTime": false,
 			"QuietTime": {},
