@@ -6,7 +6,7 @@
     <head>
       <title><xsl:value-of select="*[local-name()='info'][1]/*[local-name()='headline']" /></title>
       <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
-      <link rel="icon" type="image/x-icon" href="favicon.ico" />
+      <link rel="icon" type="image/x-icon" href="../favicon.ico" />
       <meta name="description" content="XWS - Next Generation Warning System"/>	
       <meta name="keywords" content="alert, warning, emergency"/>
       <meta name="country" content="United Kingdom"/>

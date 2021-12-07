@@ -4,10 +4,12 @@
   "description": "XWS AWS notification resources",
   "main": "index.js",
   "dependencies": {
+    "aws-sdk": "^2.890.0",
     "caplib": "github:NeXt-Warning-System/caplib",
     "feed": "4.2.2",
-    "notifications-node-client": "5.1.0",
-    "serverless": "2.23.0"
+    "json-templates": "^4.1.0",
+    "serverless": "2.23.0",
+    "xws-shared": "github:NeXt-Warning-System/common"
   },
   "devDependencies": {
     "serverless-s3-deploy": "^0.10.0",
